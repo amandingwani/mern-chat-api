@@ -6,6 +6,8 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const cors = require('cors')
 const User = require('./models/User');
+const Message = require('./models/Message');
+const ws = require('ws');
 
 dotenv.config();
 mongoose.connect(process.env.MONGO_URL);
@@ -72,4 +74,55 @@ app.post('/register', async (req, res) => {
     });
 });
 
-app.listen(4000);
+const server = app.listen(4000);
+
+const wss = new ws.WebSocketServer({server});
+wss.on('connection', (connection, req) => {
+    connection.on('error', console.error);
+
+    // Extract client info from cookie
+    console.log('A client connected');
+    const cookie = (req.headers.cookie);
+    if (cookie) {
+        const token = cookie.split('=')[1];
+        jwt.verify(token, jwtSecret, {}, (err, userData) => {
+            if (err) throw err;
+            const {userId, username} = userData;
+            connection.userId = userId;
+            connection.username = username; 
+        });
+    }
+    
+    // setting callback for message from connection
+    connection.on('message', async (rawData) => {
+        const msgString = rawData.toString();
+        const {recipient, text} = JSON.parse(msgString);
+        console.log(text);
+        if (recipient && text) {
+            // save msg to db
+            const msgDocument = await Message.create({
+                sender: connection.userId,
+                recipient: recipient,
+                text: text
+            });
+
+            // send the message to recipient (there can be multiple clients(phone, laptop etc) for the same recipient)
+            [...wss.clients]
+                .filter(c => c.userId === recipient)
+                .forEach(c => c.send(JSON.stringify({
+                    id: msgDocument._id,
+                    sender: connection.userId,
+                    recipient,
+                    text
+                })));
+        }        
+    });
+
+    const arrOfClientIds = [...wss.clients].map(c => ({userId: c.userId, username: c.username}));
+    // send the new clients list to all the clients
+    wss.clients.forEach(client => {
+        client.send(JSON.stringify({
+            online: arrOfClientIds
+        }));
+    });
+});
