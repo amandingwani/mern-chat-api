@@ -23,8 +23,36 @@ app.use(cors({
     origin: process.env.CLIENT_URL
 }));
 
+async function getUserDataFromReq(req) {
+    return new Promise((resolve, reject) => {
+        const token = req.cookies?.token;
+        if (token) {
+            jwt.verify(token, jwtSecret, {}, (err, userData) => {
+                if (err) throw err;
+                resolve(userData);
+            });
+        }
+        else {
+            reject('no token');
+        }
+    }) ;
+}
+
 app.get('/test', (req, res) => {
     res.json('test ok');
+});
+
+app.get('/messages/:userId', async (req, res) => {
+    const {userId: selectedUserId} = req.params; // userId of the user selected in the frontend
+    const ourUserData = await getUserDataFromReq(req); // userData of the user making the request
+    const ourUserId = ourUserData.userId;
+
+    const messages = await Message.find({
+        sender: {$in:[ourUserId, selectedUserId]},
+        recipient: {$in:[ourUserId, selectedUserId]}
+    }).sort({createdAt: 1});
+
+    res.json(messages);
 });
 
 app.get('/profile', (req, res) => {
@@ -110,7 +138,7 @@ wss.on('connection', (connection, req) => {
             [...wss.clients]
                 .filter(c => c.userId === recipient)
                 .forEach(c => c.send(JSON.stringify({
-                    id: msgDocument._id,
+                    _id: msgDocument._id,
                     sender: connection.userId,
                     recipient,
                     text
