@@ -112,6 +112,17 @@ const server = app.listen(4000);
 
 const wss = new ws.WebSocketServer({server});
 wss.on('connection', (connection, req) => {
+
+    function notifyAllAboutOnlinePeople() {
+        const arrOfClientIds = [...wss.clients].map(c => ({userId: c.userId, username: c.username}));
+        // send the new clients list to all the clients
+        wss.clients.forEach(client => {
+            client.send(JSON.stringify({
+                online: arrOfClientIds
+            }));
+        });
+    }
+
     connection.on('error', console.error);
 
     // Extract client info from cookie
@@ -126,6 +137,12 @@ wss.on('connection', (connection, req) => {
             connection.username = username; 
         });
     }
+
+    connection.on('close', () => {
+        console.log(connection.userId, 'disconnected');
+        connection.terminate();
+        notifyAllAboutOnlinePeople();
+    })
     
     // setting callback for message from connection
     connection.on('message', async (rawData) => {
@@ -152,11 +169,5 @@ wss.on('connection', (connection, req) => {
         }        
     });
 
-    const arrOfClientIds = [...wss.clients].map(c => ({userId: c.userId, username: c.username}));
-    // send the new clients list to all the clients
-    wss.clients.forEach(client => {
-        client.send(JSON.stringify({
-            online: arrOfClientIds
-        }));
-    });
+    notifyAllAboutOnlinePeople();
 });
