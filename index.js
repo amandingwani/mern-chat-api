@@ -55,6 +55,12 @@ app.get('/messages/:userId', async (req, res) => {
     res.json(messages);
 });
 
+// endpoint to get all users
+app.get('/people', async (req, res) => {
+    const users = await User.find({}, {_id:true, username:true});
+    res.json(users);
+});
+
 app.get('/profile', (req, res) => {
     const token = req.cookies?.token;
     if (token) {
