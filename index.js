@@ -96,6 +96,10 @@ app.post('/login', async (req, res) => {
     }
 });
 
+app.post('/logout', (req, res) => {
+    res.cookie('token', '', {sameSite:'none', secure:true}).status(200).json('logout ok');
+});
+
 app.post('/register', async (req, res) => {
     const {username, password} = req.body;
     const hashedPassword = bcrypt.hashSync(password, bcryptSalt);
@@ -126,7 +130,6 @@ wss.on('connection', (connection, req) => {
     connection.on('error', console.error);
 
     // Extract client info from cookie
-    console.log('A client connected');
     const cookie = (req.headers.cookie);
     if (cookie) {
         const token = cookie.split('=')[1];
@@ -137,6 +140,7 @@ wss.on('connection', (connection, req) => {
             connection.username = username; 
         });
     }
+    console.log('A client connected: ', connection.userId, connection.username);
 
     connection.on('close', () => {
         console.log(connection.userId, 'disconnected');
@@ -148,7 +152,7 @@ wss.on('connection', (connection, req) => {
     connection.on('message', async (rawData) => {
         const msgString = rawData.toString();
         const {recipient, text} = JSON.parse(msgString);
-        console.log(text);
+        // console.log(text);
         if (recipient && text) {
             // save msg to db
             const msgDocument = await Message.create({
