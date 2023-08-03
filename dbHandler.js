@@ -11,6 +11,7 @@ mongoose.connection
     .on('disconnected', () => {
         process.mongooseConnected = false;
         console.log(`DB disconnected`);
+        // No need to try reconnecting here as it automatically attempts reconnection
     });
 
 function connectDb() {

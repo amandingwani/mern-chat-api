@@ -7,7 +7,8 @@ const cors = require('cors')
 const User = require('./models/User');
 const Message = require('./models/Message');
 const ws = require('ws');
-const dbHandler = require('./dbHandler');
+const dbCheckStatus = require('./middleware/dbCheckStatus.js')
+const dbHandler = require('./dbHandler.js');
 
 dotenv.config();
 dbHandler.connect();
@@ -45,7 +46,7 @@ app.get('/test', (req, res) => {
 	});
 });
 
-app.get('/messages/:userId', async (req, res) => {
+app.get('/messages/:userId', dbCheckStatus, async (req, res) => {
     const {userId: selectedUserId} = req.params; // userId of the user selected in the frontend
     const ourUserData = await getUserDataFromReq(req); // userData of the user making the request
     const ourUserId = ourUserData.userId;
@@ -59,7 +60,7 @@ app.get('/messages/:userId', async (req, res) => {
 });
 
 // endpoint to get all users
-app.get('/people', async (req, res) => {
+app.get('/people', dbCheckStatus, async (req, res) => {
     const users = await User.find({}, {_id:true, username:true});
     res.json(users);
 });
@@ -77,7 +78,7 @@ app.get('/profile', (req, res) => {
     }
 });
 
-app.post('/login', async (req, res) => {
+app.post('/login', dbCheckStatus, async (req, res) => {
     const {username, password} = req.body;
     const foundUser = await User.findOne({username});
     if (foundUser) {
@@ -103,7 +104,7 @@ app.post('/logout', (req, res) => {
     res.cookie('token', '', {sameSite:'none', secure:true}).status(200).json('logout ok');
 });
 
-app.post('/register', async (req, res) => {
+app.post('/register', dbCheckStatus, async (req, res) => {
     const {username, password} = req.body;
     const hashedPassword = bcrypt.hashSync(password, bcryptSalt);
     const createdUser = await User.create({username, password: hashedPassword});
