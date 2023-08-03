@@ -1,6 +1,5 @@
 const express = require('express');
 const cookieParser = require('cookie-parser');
-const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
@@ -8,9 +7,10 @@ const cors = require('cors')
 const User = require('./models/User');
 const Message = require('./models/Message');
 const ws = require('ws');
+const dbHandler = require('./dbHandler');
 
 dotenv.config();
-mongoose.connect(process.env.MONGO_URL);
+dbHandler.connect();
 
 const jwtSecret = process.env.TOKEN_SECRET;
 const bcryptSalt = bcrypt.genSaltSync();
@@ -39,7 +39,10 @@ async function getUserDataFromReq(req) {
 }
 
 app.get('/test', (req, res) => {
-    res.json('test ok');
+    res.json({
+		test: 'ok',
+		db: (process.mongooseConnected) ? 'connected' : 'disconnected'
+	});
 });
 
 app.get('/messages/:userId', async (req, res) => {
