@@ -17,6 +17,7 @@
     "express": "^4.18.2",
     "jsonwebtoken": "^9.0.1",
     "mongoose": "^7.3.2",
+    "mongoose-unique-validator": "^4.0.0",
     "ws": "^8.13.0"
   }
 }

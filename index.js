@@ -119,11 +119,12 @@ app.post('/login', dbCheckStatus, async (req, res) => {
             });
         }
         else {
-            console.log(`${username} : Username or password incorrect`);
+            res.json({msg: 'Incorrect username or password'});
         }
     }
     else {
-        console.log(`${username} : Username not registered`);
+        // console.log(`${username} : Username not registered`);
+		res.json({msg: 'Incorrect username or password'});
     }
 });
 
@@ -134,13 +135,19 @@ app.post('/logout', (req, res) => {
 app.post('/register', dbCheckStatus, async (req, res) => {
     const {username, password} = req.body;
     const hashedPassword = bcrypt.hashSync(password, bcryptSalt);
-    const createdUser = await User.create({username, password: hashedPassword});
-    jwt.sign({userId: createdUser._id, username}, jwtSecret, {} ,(err, token) => {
-        if (err) throw err;
-        res.cookie('token', token, {sameSite:'none', secure:true}).status(201).json({
-            id: createdUser._id
-        });
-    });
+
+	try {
+		const createdUser = await User.create({username, password: hashedPassword});
+		jwt.sign({userId: createdUser._id, username}, jwtSecret, {} ,(err, token) => {
+			if (err) throw err;
+			res.cookie('token', token, {sameSite:'none', secure:true}).status(201).json({
+				id: createdUser._id
+			});
+		});
+	} catch (error) {
+		console.log(error);
+		res.json({msg: 'Username is already taken'});
+	}
 });
 
 const server = app.listen(4000);
