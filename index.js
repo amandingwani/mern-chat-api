@@ -1,5 +1,6 @@
 const express = require('express');
 const cookieParser = require('cookie-parser');
+const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
@@ -11,6 +12,21 @@ const dbCheckStatus = require('./middleware/dbCheckStatus.js')
 const dbHandler = require('./dbHandler.js');
 
 dotenv.config();
+
+mongoose.connection
+    .on('error', err => {
+      console.error(err);
+    })
+    .on('connected', err => {
+        process.mongooseConnected = true;
+      	console.log(`DB connected`);
+    })
+    .on('disconnected', () => {
+        // No need to try reconnecting here as it automatically attempts reconnection
+        process.mongooseConnected = false;
+        console.log(`DB disconnected`);
+		notifyAllAboutDbConnectionStatus('DB disconnected');
+    });
 dbHandler.connect();
 
 const jwtSecret = process.env.TOKEN_SECRET;
@@ -48,15 +64,26 @@ app.get('/test', (req, res) => {
 
 app.get('/messages/:userId', dbCheckStatus, async (req, res) => {
     const {userId: selectedUserId} = req.params; // userId of the user selected in the frontend
-    const ourUserData = await getUserDataFromReq(req); // userData of the user making the request
-    const ourUserId = ourUserData.userId;
+	try {
+		const ourUserData = await getUserDataFromReq(req); // userData of the user making the request
+		const ourUserId = ourUserData.userId;
 
-    const messages = await Message.find({
-        sender: {$in:[ourUserId, selectedUserId]},
-        recipient: {$in:[ourUserId, selectedUserId]}
-    }).sort({createdAt: 1});
+		const messages = await Message.find({
+			sender: {$in:[ourUserId, selectedUserId]},
+			recipient: {$in:[ourUserId, selectedUserId]}
+		}).sort({createdAt: 1});
 
-    res.json(messages);
+		res.json(messages);
+
+	} catch (error) {
+		if (error === 'no token') {
+			res.status(401).json('Unauthorized');
+		}
+		else {
+			console.log(error);
+			res.json({error: 'db error'})
+		}
+	}
 });
 
 // endpoint to get all users
@@ -158,24 +185,36 @@ wss.on('connection', (connection, req) => {
         const {recipient, text} = JSON.parse(msgString);
         // console.log(text);
         if (recipient && text) {
-            // save msg to db
-            const msgDocument = await Message.create({
-                sender: connection.userId,
-                recipient: recipient,
-                text: text
-            });
-
-            // send the message to recipient (there can be multiple clients(phone, laptop etc) for the same recipient)
-            [...wss.clients]
-                .filter(c => c.userId === recipient)
-                .forEach(c => c.send(JSON.stringify({
-                    _id: msgDocument._id,
-                    sender: connection.userId,
-                    recipient,
-                    text
-                })));
+			try {
+				// save msg to db
+				const msgDocument = await Message.create({
+					sender: connection.userId,
+					recipient: recipient,
+					text: text
+				});
+	
+				// send the message to recipient (there can be multiple clients(phone, laptop etc) for the same recipient)
+				[...wss.clients]
+					.filter(c => c.userId === recipient)
+					.forEach(c => c.send(JSON.stringify({
+						_id: msgDocument._id,
+						sender: connection.userId,
+						recipient,
+						text
+					})));
+			} catch (error) {
+				console.log(error);
+			}
         }        
     });
 
     notifyAllAboutOnlinePeople();
 });
+
+function notifyAllAboutDbConnectionStatus(status) {
+	wss.clients.forEach(client => {
+		client.send(JSON.stringify({
+			error: status
+		}));
+	});
+}

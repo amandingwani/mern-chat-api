@@ -1,19 +1,5 @@
 const mongoose = require('mongoose');
 
-mongoose.connection
-    .on('error', err => {
-      console.error(err);
-    })
-    .on('connected', err => {
-        process.mongooseConnected = true;
-      	console.log(`DB connected`);
-    })
-    .on('disconnected', () => {
-        process.mongooseConnected = false;
-        console.log(`DB disconnected`);
-        // No need to try reconnecting here as it automatically attempts reconnection
-    });
-
 function connectDb() {
     process.mongooseConnected = false; // set the flag to false initially
     mongoose.connect(process.env.MONGO_URL)
