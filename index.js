@@ -107,25 +107,33 @@ app.get('/profile', (req, res) => {
 
 app.post('/login', dbCheckStatus, async (req, res) => {
     const {username, password} = req.body;
-    const foundUser = await User.findOne({username});
-    if (foundUser) {
-        const passOk = bcrypt.compareSync(password, foundUser.password);
-        if (passOk) {
-            jwt.sign({userId: foundUser._id, username}, jwtSecret, {} ,(err, token) => {
-                if (err) throw err;
-                res.cookie('token', token, {sameSite:'none', secure:true}).status(200).json({
-                    id: foundUser._id
-                });
-            });
-        }
-        else {
-            res.json({msg: 'Incorrect username or password'});
-        }
-    }
-    else {
-        // console.log(`${username} : Username not registered`);
-		res.json({msg: 'Incorrect username or password'});
-    }
+	if (!username) {
+		res.json({msg: 'Please enter a username'});
+	}
+	else if (!password) {
+		res.json({msg: 'Please enter a password'});
+	}
+	else {
+		const foundUser = await User.findOne({username});
+		if (foundUser) {
+			const passOk = bcrypt.compareSync(password, foundUser.password);
+			if (passOk) {
+				jwt.sign({userId: foundUser._id, username}, jwtSecret, {} ,(err, token) => {
+					if (err) throw err;
+					res.cookie('token', token, {sameSite:'none', secure:true}).status(200).json({
+						id: foundUser._id
+					});
+				});
+			}
+			else {
+				res.json({msg: 'Incorrect username or password'});
+			}
+		}
+		else {
+			// console.log(`${username} : Username not registered`);
+			res.json({msg: 'Incorrect username or password'});
+		}
+	}
 });
 
 app.post('/logout', (req, res) => {
@@ -134,19 +142,26 @@ app.post('/logout', (req, res) => {
 
 app.post('/register', dbCheckStatus, async (req, res) => {
     const {username, password} = req.body;
-    const hashedPassword = bcrypt.hashSync(password, bcryptSalt);
-
-	try {
-		const createdUser = await User.create({username, password: hashedPassword});
-		jwt.sign({userId: createdUser._id, username}, jwtSecret, {} ,(err, token) => {
-			if (err) throw err;
-			res.cookie('token', token, {sameSite:'none', secure:true}).status(201).json({
-				id: createdUser._id
+	if (!username) {
+		res.json({msg: 'Please enter a username'});
+	}
+	else if (!password) {
+		res.json({msg: 'Please enter a password'});
+	}
+	else {
+		const hashedPassword = bcrypt.hashSync(password, bcryptSalt);
+		try {
+			const createdUser = await User.create({username, password: hashedPassword});
+			jwt.sign({userId: createdUser._id, username}, jwtSecret, {} ,(err, token) => {
+				if (err) throw err;
+				res.cookie('token', token, {sameSite:'none', secure:true}).status(201).json({
+					id: createdUser._id
+				});
 			});
-		});
-	} catch (error) {
-		console.log(error);
-		res.json({msg: 'Username is already taken'});
+		} catch (error) {
+			console.log(error);
+			res.json({msg: 'Username is already taken'});
+		}
 	}
 });
 
