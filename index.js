@@ -43,15 +43,19 @@ app.use(cors({
 async function getUserDataFromReq(req) {
     return new Promise((resolve, reject) => {
         const token = req.cookies?.token;
-        if (token) {
-            jwt.verify(token, jwtSecret, {}, (err, userData) => {
-                if (err) throw err;
-                resolve(userData);
-            });
-        }
-        else {
-            reject('no token');
-        }
+		try {
+			if (token) {
+				jwt.verify(token, jwtSecret, {}, (err, userData) => {
+					if (err) throw err;
+					resolve(userData);
+				});
+			}
+			else {
+				reject('no token');
+			}
+		} catch (error) {
+			reject('Invalid token');
+		}
     }) ;
 }
 
@@ -94,15 +98,74 @@ app.get('/people', dbCheckStatus, async (req, res) => {
 
 app.get('/profile', (req, res) => {
     const token = req.cookies?.token;
-    if (token) {
-        jwt.verify(token, jwtSecret, {}, (err, userData) => {
-            if (err) throw err;
-            res.json(userData);
-        });
-    }
-    else {
-        res.status(401).json('no token');
-    }
+	try {
+		if (token) {
+			jwt.verify(token, jwtSecret, {}, (err, userData) => {
+				if (err) throw err;
+				res.json(userData);
+			});
+		}
+		else {
+			res.status(401).json('no token');
+		}
+	} catch (error) {
+		res.status(401).json('Unauthorized');
+	}
+});
+
+app.post('/addFriend/:username', dbCheckStatus, async (req, res) => {
+    const {username} = req.params; // userId of the user selected in the frontend
+	if (!username) {
+		res.json({error: 'Please enter a valid username!'});
+	}
+
+	try {
+		const reqUserData = await getUserDataFromReq(req); // userData of the user making the request
+		const reqUserId = reqUserData.userId;
+
+		// check if friends username is not the same as reqUser name
+		if (username === reqUserData.username){
+			res.json({error: "Please enter your friend's username!"});
+		}
+		else {
+			// find reqUser doc
+			const reqUser = await User.findOne({ _id: reqUserId });
+	
+			// find friend doc
+			const friendUser = await User.findOne({username});
+			if (friendUser) {
+				// check if already friends
+				if (reqUser.friends.includes(friendUser._id)) {
+					res.json({error: 'Friend already added!'});
+				}
+				else {
+					// add friendUser to reqUser friends and vice versa
+					// Append items to `friends`
+					reqUser.friends.push(friendUser._id);
+					// Update document
+					await reqUser.save();
+		
+					// Append items to `friends`
+					friendUser.friends.push(reqUser._id);
+					// Update document
+					await friendUser.save();
+	
+					res.json('Friend added!');
+				}
+			}
+			else {
+				res.json({error: 'Username does not exist!'});
+			}
+		}
+	} catch (error) {
+		if (error === 'no token') {
+			res.status(401).json('Unauthorized');
+		}
+		else {
+			console.log(error);
+			res.json({error: 'db error'})
+		}
+	}
 });
 
 app.post('/login', dbCheckStatus, async (req, res) => {
@@ -185,15 +248,21 @@ wss.on('connection', (connection, req) => {
     // Extract client info from cookie
     const cookie = (req.headers.cookie);
     if (cookie) {
-        const token = cookie.split('=')[1];
-        jwt.verify(token, jwtSecret, {}, (err, userData) => {
-            if (err) throw err;
-            const {userId, username} = userData;
-            connection.userId = userId;
-            connection.username = username; 
-        });
+		try {
+			const token = cookie.split('=')[1];
+			jwt.verify(token, jwtSecret, {}, (err, userData) => {
+				if (err) throw err;
+				const {userId, username} = userData;
+				connection.userId = userId;
+				connection.username = username; 
+			});
+			console.log('A client connected: ', connection.userId, connection.username);
+			notifyAllAboutOnlinePeople();
+		} catch (error) {
+			console.log('WS: Invalid token');
+			connection.terminate();
+		}
     }
-    console.log('A client connected: ', connection.userId, connection.username);
 
     connection.on('close', () => {
         console.log(connection.userId, 'disconnected');
@@ -229,8 +298,6 @@ wss.on('connection', (connection, req) => {
 			}
         }        
     });
-
-    notifyAllAboutOnlinePeople();
 });
 
 function notifyAllAboutDbConnectionStatus(status) {
