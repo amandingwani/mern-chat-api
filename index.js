@@ -195,8 +195,17 @@ app.post('/addFriend/:username', dbCheckStatus, async (req, res) => {
 					friendUser.friends.push(reqUser._id);
 					// Update document
 					await friendUser.save();
-	
-					res.json('Friend added!');
+
+					// respond with the added friend details along with online status
+					let onlineStatus = false;
+					let result = [...wss.clients].filter(c => {
+						return c.userId === friendUser._id.toString();
+					});
+					if (result.length !== 0) {
+						onlineStatus = true;
+					}
+					
+					res.json({msg: 'Friend added!', friend: {_id: friendUser._id, username: friendUser.username, online: onlineStatus}});
 				}
 			}
 			else {
@@ -209,7 +218,7 @@ app.post('/addFriend/:username', dbCheckStatus, async (req, res) => {
 		}
 		else {
 			console.log(error);
-			res.json({error: 'db error'})
+			res.json({error: 'Server error'})
 		}
 	}
 });
