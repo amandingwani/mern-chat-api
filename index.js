@@ -203,6 +203,11 @@ app.post('/addFriend/:username', dbCheckStatus, async (req, res) => {
 					});
 					if (result.length !== 0) {
 						onlineStatus = true;
+
+						// inform the friend that reqUser added you as friend
+						result.forEach(client => {
+							client.send(JSON.stringify({addFriend: {_id: reqUser._id, username: reqUser.username, online: true}}));
+						});
 					}
 					
 					res.json({msg: 'Friend added!', friend: {_id: friendUser._id, username: friendUser.username, online: onlineStatus}});
