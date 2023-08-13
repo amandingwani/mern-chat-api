@@ -75,7 +75,7 @@ app.get('/messages/:userId', dbCheckStatus, async (req, res) => {
 		const messages = await Message.find({
 			sender: {$in:[ourUserId, selectedUserId]},
 			recipient: {$in:[ourUserId, selectedUserId]}
-		}).sort({createdAt: 1});
+		}).sort({createdAt: 1}).lean();
 
 		res.json(messages);
 
@@ -90,10 +90,56 @@ app.get('/messages/:userId', dbCheckStatus, async (req, res) => {
 	}
 });
 
-// endpoint to get all users
-app.get('/people', dbCheckStatus, async (req, res) => {
-    const users = await User.find({}, {_id:true, username:true});
-    res.json(users);
+// finds all friends (as User objects) of a User
+async function findFriends(userId) {
+	return new Promise(async (resolve, reject) => {
+		try {
+			// find reqUser doc
+			const reqUser = await User.findOne({ _id: userId }).lean();
+		
+			const friendsIds = reqUser.friends;
+			// find all user objects with id in friends
+			const friends = await User.find({
+				_id: {$in: friendsIds}
+			}, '_id username').lean();
+			// lean() converts mongoose document to javascript object so we can add a new field
+		
+			resolve(friends);
+		} catch (error) {
+			reject('db error');
+		}
+	});
+}
+
+// endpoint to get all friends of a user
+app.get('/friends', dbCheckStatus, async (req, res) => {
+	try {
+		const reqUserData = await getUserDataFromReq(req); // userData of the user making the request
+		const reqUserId = reqUserData.userId;
+
+		const friends = await findFriends(reqUserId);
+		// for every friend, add current online status
+		friends.map(friend => {
+			let onlineStatus = false;
+			let result = [...wss.clients].filter(c => {
+				return c.userId === friend._id.toString();
+			});
+			if (result.length !== 0) {
+				onlineStatus = true;
+			}
+			friend['online'] = onlineStatus;
+		})
+		res.json(friends);
+
+	} catch (error) {
+		if (error === 'no token' || error === 'Invalid token') {
+			res.status(401).json('Unauthorized');
+		}
+		else {
+			// console.log(error);
+			res.json({error: 'db error'});
+		}
+	}
 });
 
 app.get('/profile', (req, res) => {
@@ -233,14 +279,31 @@ const server = app.listen(4000);
 const wss = new ws.WebSocketServer({server});
 wss.on('connection', (connection, req) => {
 
-    function notifyAllAboutOnlinePeople() {
-        const arrOfClientIds = [...wss.clients].map(c => ({userId: c.userId, username: c.username}));
-        // send the new clients list to all the clients
-        wss.clients.forEach(client => {
-            client.send(JSON.stringify({
-                online: arrOfClientIds
-            }));
-        });
+    async function notifyAllFriends(status) {
+		// get all friends of the connection
+		try {
+			const friends = await findFriends(connection.userId);
+
+			// find all online friends amongst connections
+			let onlineFriends = [];
+			friends.map(friend => {
+				let result = [...wss.clients].filter(c => {
+					return c.userId === friend._id.toString();
+				});
+				if (result.length !== 0) {
+					onlineFriends.push(...result);
+				}
+			});
+			
+			// notify all online friends of the new user that its online(true) or offline(false)
+			onlineFriends.forEach(client => {
+				client.send(JSON.stringify({
+					status: {userId: connection.userId, username: connection.username, status: status}
+				}));
+			});
+		} catch (error) {
+			console.log(error);
+		}
     }
 
     connection.on('error', console.error);
@@ -257,17 +320,21 @@ wss.on('connection', (connection, req) => {
 				connection.username = username; 
 			});
 			console.log('A client connected: ', connection.userId, connection.username);
-			notifyAllAboutOnlinePeople();
+			notifyAllFriends(true); // online -> true
 		} catch (error) {
 			console.log('WS: Invalid token');
 			connection.terminate();
 		}
     }
+	else {
+		console.log('WS: No cookie');
+		connection.terminate();
+	}
 
     connection.on('close', () => {
         console.log(connection.userId, 'disconnected');
+        notifyAllFriends(false); // offline -> false
         connection.terminate();
-        notifyAllAboutOnlinePeople();
     })
     
     // setting callback for message from connection
